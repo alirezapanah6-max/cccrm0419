@@ -3504,14 +3504,31 @@
   }
 
   function ensureLogs(record){
-    const logs = Array.isArray(record.logs) ? record.logs.slice() : [];
-    if(logs.length === 0){
+    const hasStoredLogs = Array.isArray(record.logs);
+    const logs = hasStoredLogs ? record.logs.slice() : [];
+    // Only backfill records created before the log feature. A new record starts
+    // with an explicit empty array and must not receive a duplicate seed entry.
+    if(!hasStoredLogs){
       logs.push({at:record.createdAt || Date.now(), actorId:record.agentId || '', actorName:record.agentName || 'نامشخص', action:'ثبت تماس', detail:'وضعیت اولیه: ' + (record.status || '—'), description:record.description || ''});
-      if(record.status === 'حل‌شده'){
-        logs.push({at:record.resolvedAt || record.updatedAt || record.createdAt || Date.now(), actorId:record.resolvedById || record.agentId || '', actorName:record.resolvedByName || record.agentName || 'نامشخص', action:'حل مورد', detail:'مورد به‌عنوان حل‌شده ثبت شده است', description:record.description || ''});
-      }
     }
-    return logs;
+    const unique = [];
+    const seen = {};
+    logs.forEach(function(log){
+      const key = [log.at || 0, log.actorId || log.actorName || '', log.action || ''].join('|');
+      const previousIndex = seen[key];
+      if(previousIndex === undefined){
+        seen[key] = unique.length;
+        unique.push(log);
+        return;
+      }
+      // Earlier versions could add a generic "حل مورد" beside the real one.
+      // Keep the more informative entry when both describe the same event.
+      const previous = unique[previousIndex];
+      if(log.action === 'حل مورد' && previous.detail === 'مورد به‌عنوان حل‌شده ثبت شده است' && log.detail !== previous.detail){
+        unique[previousIndex] = log;
+      }
+    });
+    return unique;
   }
 
   function addCallLog(record, action, detail, at, description){
@@ -4297,17 +4314,27 @@
     }
 
     if(existing){
-      if(existing.status !== status){ addCallLog(record, 'تغییر وضعیت', 'از «' + existing.status + '» به «' + status + '»', now, desc); }
+      if(existing.status !== status){
+        const action = status === 'حل‌شده' ? 'پیگیری حل شد' : 'تغییر وضعیت';
+        const detail = status === 'حل‌شده'
+          ? 'حل‌کننده: ' + currentUser.displayName
+          : 'از «' + existing.status + '» به «' + status + '»';
+        addCallLog(record, action, detail, now, desc);
+      }
       else { addCallLog(record, 'ویرایش تماس', 'اطلاعات تماس بروزرسانی شد', now, desc); }
     } else {
-      addCallLog(record, 'ثبت تماس', 'وضعیت اولیه: ' + status, now, desc);
-      if(primaryOpenFollowup){
-        const chain = getFollowupChainStats(followupRootId);
-        addCallLog(record, 'اتصال به زنجیره پیگیری', fa(chain.totalCalls + 1) + ' تماس در این زنجیره؛ پیگیری قبلی: ' + callTitle(primaryOpenFollowup), now, desc);
-      } else if(openFollowups.length && followupMode === 'new'){
-        addCallLog(record, 'ثبت به عنوان مشکل جدید', 'برای این شماره پیگیری باز وجود داشت اما تماس به عنوان مشکل جدید ثبت شد', now, desc);
-      }
-      if(status === 'حل‌شده'){ addCallLog(record, 'حل مورد', 'حل‌کننده: ' + currentUser.displayName, now, desc); }
+      const action = primaryOpenFollowup
+        ? 'ادامه پیگیری'
+        : (openFollowups.length && followupMode === 'new'
+          ? 'ثبت مشکل جدید'
+          : (status === 'حل‌شده' ? 'ثبت تماس حل‌شده' : (status === 'در حال پیگیری' ? 'ثبت پیگیری باز' : 'ثبت تماس')));
+      const detailParts = [];
+      if(status === 'حل‌شده') detailParts.push('حل‌کننده: ' + currentUser.displayName);
+      else detailParts.push('وضعیت: ' + status);
+      if(primaryOpenFollowup) detailParts.push('ادامه شناسه درخواست ' + getRequestId(primaryOpenFollowup));
+      if(openFollowups.length && followupMode === 'new') detailParts.push('با وجود پیگیری باز، به‌عنوان درخواست جدا ثبت شد');
+      if(shouldCloseOpenFollowup) detailParts.push(fa(openFollowupsToClose.length) + ' پیگیری قبلی بسته شد');
+      addCallLog(record, action, detailParts.join(' · '), now, desc);
     }
 
     let closedOpenRecords = [];
@@ -4326,7 +4353,6 @@
         addCallLog(closed, 'بستن پیگیری', 'با تماس جدید ' + callTitle(record), now, desc);
         return closed;
       });
-      addCallLog(record, 'بستن پیگیری‌های قبلی', fa(closedOpenRecords.length) + ' پیگیری قبلی توسط ' + currentUser.displayName + ' بسته شد', now, desc);
     }
 
     const ok = await storageSet('call:' + record.id, JSON.stringify(record));
