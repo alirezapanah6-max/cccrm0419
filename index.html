@@ -354,7 +354,28 @@
   body.role-agent .report-filter-card #filterRequest{padding-left:8px; padding-right:8px; font-size:13px;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(1){order:1 !important; grid-column:span 2 !important;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(2){order:2 !important; grid-column:span 2 !important;}
+  body.role-admin.tab-dashboard .report-filter-card{gap:14px 10px;}
   body.role-admin.tab-dashboard .report-filter-card .quick-filter-field{order:3 !important; grid-column:span 6 !important;}
+  body.role-admin.tab-dashboard .report-filter-card .quick-filter-field > label{text-align:center;}
+  body.role-admin.tab-dashboard .report-filter-card .quick-filters{
+    display:flex;
+    flex-wrap:nowrap;
+    gap:4px;
+    width:100%;
+  }
+  body.role-admin.tab-dashboard .report-filter-card .quick-filter-btn{
+    flex:1 1 0;
+    width:auto;
+    min-width:0;
+    padding:7px 3px;
+    border-radius:var(--radius-sm);
+    font-size:10px;
+    text-align:center;
+    min-height:42px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(4){order:4 !important; grid-column:span 2 !important;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(5){order:5 !important; grid-column:span 2 !important;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(6){order:6 !important; grid-column:span 2 !important;}
@@ -453,6 +474,10 @@
   body.role-agent .quick-filter-btn.mine.active{background:#F59E0B; border-color:#F59E0B; color:#fff; box-shadow:0 4px 12px rgba(245,158,11,.25);}
   .quick-filter-btn.warning{color:#8A5A00; border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.1);}
   .quick-filter-btn.warning.active{background:#F59E0B; border-color:#F59E0B; color:#fff; box-shadow:0 4px 12px rgba(245,158,11,.25);}
+  .quick-filter-btn.closed{color:#087F6B; border-color:rgba(20,184,166,.38); background:rgba(20,184,166,.1);}
+  .quick-filter-btn.closed:hover{background:rgba(20,184,166,.17); color:#066B5B;}
+  .quick-filter-btn.closed.active{background:#14B8A6; border-color:#14B8A6; color:#fff; box-shadow:0 4px 12px rgba(20,184,166,.25);}
+  .closed-duration{display:block; margin-top:5px; color:var(--text-mute); font-size:10.5px; white-space:nowrap;}
 
   .agent-filter-wrap{position:relative;}
   .agent-filter-btn{width:100%; text-align:right; font-size:13.5px; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); background:var(--surface-alt); color:var(--text); cursor:pointer;}
@@ -1300,7 +1325,9 @@
             <button type="button" class="quick-filter-btn" data-quick-filter="last14">۱۴ روز اخیر</button>
             <button type="button" class="quick-filter-btn" data-quick-filter="last30">۳۰ روز اخیر</button>
             <button type="button" class="quick-filter-btn mine" data-quick-filter="my-open">پیگیری‌های باز من</button>
-            <button type="button" class="quick-filter-btn warning" data-quick-filter="old-open">پیگیری‌های باز قدیمی</button>
+            <button type="button" class="quick-filter-btn warning" data-quick-filter="old-open" title="پیگیری‌های باز قدیمی">پیگیری باز قدیمی</button>
+            <button type="button" class="quick-filter-btn closed" data-quick-filter="closed" title="پیگیری‌های بسته‌شده">پیگیری بسته‌شده</button>
+            <button type="button" class="quick-filter-btn closed" data-quick-filter="my-closed">پیگیری‌های بسته‌شده من</button>
           </div>
         </div>
         <div class="field">
@@ -2392,6 +2419,7 @@
   let dashboardAppliedFilterState = null;
   let profileAppliedFilterState = null;
   let performanceRows = [];
+  let activeReportChainFilter = '';
 
   /* ============ DOM refs ============ */
   const fDateHintEl = document.getElementById('fDateHint');
@@ -2795,8 +2823,8 @@
     profileExportBtn.classList.toggle('hidden', !isAdmin);
     document.getElementById('agentPerformancePanel').classList.toggle('hidden', isAdmin);
     document.querySelectorAll('.quick-filter-btn').forEach(function(btn){
-      const isMineOpen = btn.dataset.quickFilter === 'my-open';
-      btn.classList.toggle('hidden', isAdmin ? isMineOpen : !isMineOpen);
+      const agentOnly = btn.dataset.quickFilter === 'my-open' || btn.dataset.quickFilter === 'my-closed';
+      btn.classList.toggle('hidden', isAdmin ? agentOnly : !agentOnly);
     });
     syncMergedDashboardLayout(isAdmin && currentTab === 'dashboard');
     if(isAdmin && currentTab === 'list'){
@@ -3648,6 +3676,22 @@
     });
   }
 
+  function recordWasEverOpen(record){
+    if(!record) return false;
+    if(record.status === 'در حال پیگیری' || record.closedByCallId) return true;
+    return ensureLogs(record).some(function(log){
+      const action = String(log.action || '');
+      const detail = String(log.detail || '');
+      return action === 'ثبت پیگیری باز' ||
+        action === 'ادامه پیگیری' ||
+        action === 'پیگیری حل شد' ||
+        action === 'بستن پیگیری' ||
+        detail.indexOf('وضعیت اولیه: در حال پیگیری') !== -1 ||
+        detail.indexOf('وضعیت: در حال پیگیری') !== -1 ||
+        detail.indexOf('از «در حال پیگیری»') !== -1;
+    });
+  }
+
   function getFollowupChainStats(recordOrRoot){
     const rootId = typeof recordOrRoot === 'string' ? recordOrRoot : getFollowupRootId(recordOrRoot);
     let members = getFollowupChainMembers(rootId);
@@ -3655,6 +3699,12 @@
     const firstRecord = members[0] || null;
     const lastRecord = members[members.length - 1] || null;
     const openMembers = members.filter(function(c){ return c.status === 'در حال پیگیری'; });
+    const resolvedMembers = members.filter(function(c){ return c.status === 'حل‌شده'; }).sort(function(a,b){
+      return ((b.resolvedAt || b.updatedAt || b.createdAt) || 0) - ((a.resolvedAt || a.updatedAt || a.createdAt) || 0);
+    });
+    const closingRecord = resolvedMembers[0] || null;
+    const wasEverOpen = members.some(recordWasEverOpen);
+    const closedAt = closingRecord ? (closingRecord.resolvedAt || closingRecord.updatedAt || closingRecord.createdAt || 0) : 0;
     return {
       rootId: rootId,
       members: members,
@@ -3663,6 +3713,10 @@
       latestOpen: openMembers.slice().sort(function(a,b){ return (b.createdAt||0) - (a.createdAt||0); })[0] || null,
       totalCalls: members.length,
       openCount: openMembers.length,
+      wasEverOpen: wasEverOpen,
+      isClosedFollowup: wasEverOpen && openMembers.length === 0 && !!closingRecord,
+      closingRecord: closingRecord,
+      closedAt: closedAt,
       openedAt: firstRecord ? (firstRecord.createdAt || firstRecord.updatedAt || Date.now()) : Date.now(),
       lastAt: lastRecord ? (lastRecord.createdAt || lastRecord.updatedAt || Date.now()) : Date.now()
     };
@@ -4296,6 +4350,24 @@
     return calls.find(function(c){ return c.id === selectedFollowupRecordId; }) || null;
   }
 
+  function normalizeFollowupDescription(value){
+    return String(value || '')
+      .replace(/[\u200c\u200f]/g, '')
+      .replace(/ي/g, 'ی')
+      .replace(/ك/g, 'ک')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function getLatestFollowupDescription(record){
+    if(!record) return '';
+    const rootId = getFollowupRootId(record);
+    const latest = calls
+      .filter(function(call){ return getFollowupRootId(call) === rootId; })
+      .sort(function(a, b){ return (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0); })[0];
+    return latest ? latest.description || '' : '';
+  }
+
   function hasDifferentCategoryFromFollowup(record, catId, subId, subsubId){
     if(!record) return false;
     const cat = findCategoryForRecord(record);
@@ -4370,6 +4442,20 @@
     const selectedIsValid = selectedOpen && selectedOpen.phone === phone && selectedOpen.status === 'در حال پیگیری';
     const shouldContinueFollowup = !editingCallId && followupMode === 'continue' && openFollowups.length > 0;
     const primaryOpenFollowup = shouldContinueFollowup ? (selectedIsValid ? selectedOpen : openFollowups[0]) : null;
+    if(primaryOpenFollowup && status === 'در حال پیگیری'){
+      const normalizedDescription = normalizeFollowupDescription(desc);
+      const previousDescription = normalizeFollowupDescription(getLatestFollowupDescription(primaryOpenFollowup));
+      if(!normalizedDescription){
+        toast('برای ادامه پیگیری، توضیح جدید یا اقدام انجام‌شده را ثبت کنید', 'error');
+        fDesc.focus();
+        return;
+      }
+      if(previousDescription && normalizedDescription === previousDescription){
+        toast('توضیحات این پیگیری با توضیح آخر زنجیره یکسان است؛ لطفاً نتیجه یا اقدام جدید را ثبت کنید', 'error');
+        fDesc.focus();
+        return;
+      }
+    }
     if(primaryOpenFollowup && !skipCategoryMismatchConfirm && hasDifferentCategoryFromFollowup(primaryOpenFollowup, categoryId, subId, subsubId)){
       confirmModal('دسته‌بندی این تماس با پیگیری باز انتخاب‌شده متفاوت است. اگر این تماس ادامه همان پیگیری است، بهتر است دسته‌بندی قبلی حفظ شود. با همین دسته‌بندی جدید ثبت شود؟', function(){
         handleSubmitCall(true, skipNewRequestConfirm);
@@ -4975,6 +5061,7 @@
       agents:Array.from(agentFilterSelected),
       resolverAll:resolverFilterAll.checked,
       resolvers:Array.from(resolverFilterSelected),
+      chainFilter:activeReportChainFilter,
       pageSize:tablePageSize
     };
   }
@@ -5045,6 +5132,7 @@
     pageSizeSelect.value = String(tablePageSize);
     setAgentFilterNames(state.agentAll === false ? (state.agents || []) : []);
     setResolverFilterNames(state.resolverAll === false ? (state.resolvers || (state.resolver ? [state.resolver] : [])) : []);
+    activeReportChainFilter = state.chainFilter || '';
     restoringReportFilters = false;
     reportAppliedFilterState = getReportFilterState();
   }
@@ -5077,6 +5165,7 @@
     filterRequest.value = '';
     filterTimeRange.value = '';
     filterFollowupAge.value = '';
+    activeReportChainFilter = '';
     setAgentFilterNames([]);
     setResolverFilterNames([]);
     if(shouldApply) commitReportFiltersAndRender();
@@ -5120,6 +5209,8 @@
         state.followupAge === '24' &&
         state.agentAll;
     }
+    if(type === 'closed') return state.chainFilter === 'closed';
+    if(type === 'my-closed') return state.chainFilter === 'my-closed';
     return false;
   }
 
@@ -5133,6 +5224,8 @@
     } else if(type === 'old-open'){
       if(filterStatus.value === 'در حال پیگیری') filterStatus.value = '';
       if(filterFollowupAge.value === '24') filterFollowupAge.value = '';
+    } else if(type === 'closed' || type === 'my-closed'){
+      activeReportChainFilter = '';
     }
     commitReportFiltersAndRender();
   }
@@ -5166,13 +5259,17 @@
     } else if(type === 'old-open'){
       filterStatus.value = 'در حال پیگیری';
       filterFollowupAge.value = '24';
+    } else if(type === 'closed'){
+      activeReportChainFilter = 'closed';
+    } else if(type === 'my-closed'){
+      activeReportChainFilter = 'my-closed';
     }
     commitReportFiltersAndRender();
   }
 
   function updateQuickFilterButtons(){
     document.querySelectorAll('.quick-filter-btn').forEach(function(btn){ btn.classList.remove('active'); });
-    ['today','yesterday','last7','last14','last30','my-open','old-open'].forEach(function(type){
+    ['today','yesterday','last7','last14','last30','my-open','old-open','closed','my-closed'].forEach(function(type){
       if(!isQuickFilterActive(type)) return;
       const btn = document.querySelector('.quick-filter-btn[data-quick-filter="' + type + '"]');
       if(btn) btn.classList.add('active');
@@ -5186,10 +5283,10 @@
   });
 
   /* ============ Filters / report rendering ============ */
-  function filterCallsByCriteria(criteria){
+  function filterCallsByCriteria(criteria, sourceCalls){
     const agentNames = criteria.agentNames || null;
     const resolverNames = criteria.resolverNames || null;
-    return calls.filter(function(c){
+    return (sourceCalls || calls).filter(function(c){
       if(criteria.from && c.date < criteria.from) return false;
       if(criteria.to && c.date > criteria.to) return false;
       if(criteria.catId && c.categoryId !== criteria.catId) return false;
@@ -5215,13 +5312,48 @@
     });
   }
 
+  function localISOFromTimestamp(timestamp){
+    const d = new Date(timestamp || Date.now());
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 10);
+  }
+
+  function getClosedFollowupRows(criteria, mineOnly){
+    const seenRoots = {};
+    const rows = [];
+    calls.forEach(function(c){
+      const rootId = getFollowupRootId(c);
+      if(!rootId || seenRoots[rootId]) return;
+      seenRoots[rootId] = true;
+      const chain = getFollowupChainStats(rootId);
+      if(!chain.isClosedFollowup || !chain.closingRecord) return;
+      const closing = chain.closingRecord;
+      if(mineOnly && currentUser){
+        const resolvedByMe = closing.resolvedById === currentUser.id ||
+          (!closing.resolvedById && closing.resolvedByName === currentUser.displayName) ||
+          (!closing.resolvedById && !closing.resolvedByName && closing.agentName === currentUser.displayName);
+        if(!resolvedByMe) return;
+      }
+      const row = Object.assign({}, closing, {
+        date:localISOFromTimestamp(chain.closedAt),
+        createdAt:chain.closedAt,
+        agentId:chain.firstRecord ? chain.firstRecord.agentId : closing.agentId,
+        agentName:chain.firstRecord ? chain.firstRecord.agentName : closing.agentName,
+        _closedFollowup:true,
+        _closedDuration:Math.max(0, chain.closedAt - chain.openedAt)
+      });
+      rows.push(row);
+    });
+    return filterCallsByCriteria(criteria, rows);
+  }
+
   function applyFiltersAndRender(){
     const state = getActiveReportFilterState();
     const from = state.from;
     const to = state.to;
     const agentFilterActive = !state.agentAll;
     const resolverFilterActive = !state.resolverAll;
-    const filtered = filterCallsByCriteria({
+    const criteria = {
       from:from,
       to:to,
       catId:state.category,
@@ -5233,7 +5365,10 @@
       followupAge:state.followupAge,
       agentNames:agentFilterActive ? new Set(state.agents || []) : null,
       resolverNames:resolverFilterActive ? new Set(state.resolvers || []) : null
-    });
+    };
+    const filtered = state.chainFilter
+      ? getClosedFollowupRows(criteria, state.chainFilter === 'my-closed')
+      : filterCallsByCriteria(criteria);
 
     lastFiltered = filtered;
     tablePage = 1;
@@ -5911,9 +6046,10 @@
 
     const start = total ? ((tablePage - 1) * tablePageSize) + 1 : 0;
     const end = total ? Math.min(start + tablePageSize - 1, total) : 0;
+    const unit = getActiveReportFilterState().chainFilter ? 'پیگیری' : 'تماس';
     tablePageInfo.textContent = total
-      ? 'نمایش ' + fa(start) + ' تا ' + fa(end) + ' از ' + fa(total) + ' تماس'
-      : 'نمایش ۰ تماس';
+      ? 'نمایش ' + fa(start) + ' تا ' + fa(end) + ' از ' + fa(total) + ' ' + unit
+      : 'نمایش ۰ ' + unit;
     tablePageLabel.textContent = 'صفحه ' + fa(tablePage) + ' از ' + fa(totalPages);
     prevPageBtn.disabled = tablePage <= 1 || total === 0;
     nextPageBtn.disabled = tablePage >= totalPages || total === 0;
@@ -5921,7 +6057,14 @@
 
   function renderTable(filtered){
     updateTablePagination(filtered.length);
-    if(filtered.length === 0){ callsTableBody.innerHTML = ''; emptyState.classList.remove('hidden'); return; }
+    if(filtered.length === 0){
+      callsTableBody.innerHTML = '';
+      emptyState.textContent = getActiveReportFilterState().chainFilter
+        ? 'پیگیری بسته‌شده‌ای با این فیلترها پیدا نشد.'
+        : 'هنوز تماسی با این فیلترها ثبت نشده است.';
+      emptyState.classList.remove('hidden');
+      return;
+    }
     emptyState.classList.add('hidden');
     const pageStart = (tablePage - 1) * tablePageSize;
     const pageRows = filtered.slice(pageStart, pageStart + tablePageSize);
@@ -5929,6 +6072,8 @@
       const path = [c.categoryName, c.subName, c.subsubName].filter(Boolean).join(' ‹ ');
       const rawDesc = c.description || '';
       const shortDesc = rawDesc.length > 60 ? rawDesc.slice(0,60) + '…' : rawDesc;
+      const statusLabel = c._closedFollowup ? 'پیگیری بسته‌شده' : c.status;
+      const durationHtml = c._closedFollowup ? '<small class="closed-duration">مدت: ' + escapeHtml(formatDurationFa(c._closedDuration || 0)) + '</small>' : '';
       const canEditRow = canEditCallRecord(c);
       const canDeleteRow = canEditCallRecord(c);
       const canViewLog = currentUser && currentUser.role === 'admin';
@@ -5943,7 +6088,7 @@
         '<td>' + escapeHtml(path) + '</td>' +
         '<td>' + escapeHtml(c.agentName) + '</td>' +
         '<td class="resolver-cell">' + escapeHtml(getResolverName(c)) + '</td>' +
-        '<td><span class="status-pill" style="--pill-color:' + statusColor(c.status) + '">' + escapeHtml(c.status) + '</span></td>' +
+        '<td><span class="status-pill" style="--pill-color:' + statusColor(c.status) + '">' + escapeHtml(statusLabel) + '</span>' + durationHtml + '</td>' +
         '<td class="desc-cell" title="' + escapeHtml(rawDesc) + '">' + (escapeHtml(shortDesc) || '—') + '</td>' +
         '<td class="actions-cell">' + actions + '</td>' +
       '</tr>';
