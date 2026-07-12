@@ -125,7 +125,18 @@
 
   .main{flex:1; min-width:0; padding:26px 32px 60px;}
   .topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
+  .topbar-title{display:flex; align-items:center; gap:9px; min-width:0;}
   .topbar h1{font-size:20px; font-weight:700; margin:0;}
+  .panel-back-btn{
+    width:38px; height:38px; flex:0 0 38px; display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid var(--accent); border-radius:var(--radius-sm); background:var(--accent); color:#fff;
+    font-size:23px; font-weight:800; line-height:1; cursor:pointer; box-shadow:0 4px 12px rgba(47,111,237,.28);
+    transition:background .15s, border-color .15s, transform .15s, box-shadow .15s;
+  }
+  .panel-back-btn:hover{background:var(--accent-dark); border-color:var(--accent-dark); transform:translateX(2px); box-shadow:0 5px 15px rgba(47,111,237,.36);}
+  .panel-back-btn.hidden{display:none;}
+  body.dark-mode .panel-back-btn{background:#3B82F6; border-color:#60A5FA; color:#fff; box-shadow:0 4px 15px rgba(59,130,246,.38);}
+  body.dark-mode .panel-back-btn:hover{background:#2563EB; border-color:#60A5FA;}
   .topbar-right{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
   .datetime{font-size:12.5px; color:var(--text-mute); background:var(--surface); padding:7px 14px; border-radius:999px; border:1px solid var(--border);}
   .user-pill{font-size:12px; font-weight:600; color:var(--accent-dark); background:rgba(47,111,237,.08); padding:7px 14px; border-radius:999px; border:1px solid rgba(47,111,237,.18); white-space:nowrap;}
@@ -830,7 +841,8 @@
     .nav-item{flex:0 0 48px; height:44px; justify-content:center; padding:0;}
     .main{width:100%; padding:18px 12px 46px; overflow-x:hidden;}
     .topbar{align-items:flex-start; margin-bottom:18px; gap:12px;}
-    .topbar h1{width:100%; font-size:21px;}
+    .topbar-title{width:100%;}
+    .topbar-title h1{width:auto; flex:1; font-size:21px;}
     .topbar-right{width:100%; justify-content:flex-start; gap:8px;}
     .topbar-right .btn, .topbar-right .user-pill, .topbar-right .datetime{min-height:38px;}
     .datetime{order:10; width:100%; text-align:center;}
@@ -1166,7 +1178,10 @@
 
   <main class="main">
     <header class="topbar">
-      <h1 id="pageTitle">ثبت تماس جدید</h1>
+      <div class="topbar-title">
+        <h1 id="pageTitle">ثبت تماس جدید</h1>
+        <button id="panelBackBtn" type="button" class="panel-back-btn hidden" title="بازگشت به صفحه قبل" aria-label="بازگشت به صفحه قبل"><span aria-hidden="true">→</span></button>
+      </div>
       <div class="topbar-right">
         <span class="user-pill" id="currentUserBadge">—</span>
         <button id="myAccountBtn" class="btn btn-ghost btn-sm hidden">حساب من</button>
@@ -2365,6 +2380,8 @@
   let selectedFollowupRecordId = '';
   let activeProfilePhone = '';
   let currentTab = 'new';
+  let profileBackState = null;
+  let contextualProfileNavigation = false;
   let confirmCallback = null;
   let appInitializedOnce = false;
   let userModalState = {editingId:null, isSelfMode:false};
@@ -2491,6 +2508,7 @@
   const syncStatusEl = document.getElementById('syncStatus');
   const currentUserBadgeEl = document.getElementById('currentUserBadge');
   const themeToggleBtn = document.getElementById('themeToggleBtn');
+  const panelBackBtn = document.getElementById('panelBackBtn');
 
   const THEME_STORAGE_KEY = 'crm-theme-mode';
 
@@ -4028,14 +4046,45 @@
     }).join('');
   }
 
+  function syncPanelBackButton(){
+    if(!panelBackBtn) return;
+    const visible = currentTab === 'profile' && profileBackState;
+    panelBackBtn.classList.toggle('hidden', !visible);
+  }
+
+  function rememberProfileOrigin(){
+    if(currentTab === 'profile') return;
+    profileBackState = {tab:currentTab, scrollY:window.scrollY || 0};
+  }
+
+  function returnFromCustomerProfile(){
+    if(!profileBackState) return;
+    const target = profileBackState;
+    profileBackState = null;
+    const targetNav = document.querySelector('.nav-item[data-tab="' + target.tab + '"]');
+    if(!targetNav || targetNav.classList.contains('hidden')){
+      syncPanelBackButton();
+      return;
+    }
+    targetNav.click();
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ window.scrollTo(0, target.scrollY || 0); });
+    });
+  }
+
+  if(panelBackBtn) panelBackBtn.addEventListener('click', returnFromCustomerProfile);
+
   function openCustomerFile(phone){
+    rememberProfileOrigin();
     activeProfilePhone = phone || '';
     profilePhoneSearch.value = activeProfilePhone;
     profileRequestSearch.value = '';
     profileNameSearch.value = '';
     profilePage = 1;
     profileAppliedFilterState = getProfileFilterState();
+    contextualProfileNavigation = true;
     document.querySelector('.nav-item[data-tab="profile"]').click();
+    contextualProfileNavigation = false;
     renderCustomerFile();
   }
 
@@ -4044,6 +4093,7 @@
     const record = calls.find(function(c){ return getRequestId(c) === cleanId; }) ||
       calls.find(function(c){ return getRequestId(c).indexOf(cleanId) !== -1; });
     if(!record){ toast('درخواستی با این شناسه پیدا نشد', 'error'); return; }
+    rememberProfileOrigin();
     setJalaliPickerToISO('profileFrom', '');
     setJalaliPickerToISO('profileTo', '');
     profileCategory.value = '';
@@ -4056,7 +4106,9 @@
     profileNameSearch.value = '';
     profilePage = 1;
     profileAppliedFilterState = getProfileFilterState();
+    contextualProfileNavigation = true;
     document.querySelector('.nav-item[data-tab="profile"]').click();
+    contextualProfileNavigation = false;
     renderCustomerFile();
   }
 
@@ -5976,6 +6028,8 @@
       document.querySelectorAll('.nav-item').forEach(function(b){ b.classList.remove('active'); });
       btn.classList.add('active');
       const tab = btn.dataset.tab;
+      if(tab === 'profile' && !contextualProfileNavigation) profileBackState = null;
+      if(tab !== 'profile') profileBackState = null;
       const isMergedAdminDashboard = currentUser && currentUser.role === 'admin' && tab === 'dashboard';
       currentTab = tab;
       syncBodyTabClass(tab);
@@ -5988,6 +6042,7 @@
       document.getElementById('pageTitle').textContent = {
         new:'ثبت تماس جدید', list:'تماس‌ها و گزارش', profile:'پرونده مشتری', dashboard:'داشبورد مدیریت', performance:'عملکرد کاربران', settings:'تنظیم دسته‌بندی‌ها', users:'مدیریت کاربران'
       }[tab];
+      syncPanelBackButton();
       if(tab === 'list' || isMergedAdminDashboard) applyFiltersAndRender();
       if(tab === 'profile') renderCustomerFile();
       if(tab === 'performance') renderUserPerformance();
