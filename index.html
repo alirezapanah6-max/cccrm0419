@@ -354,7 +354,7 @@
   body.role-agent .report-filter-card #filterRequest{padding-left:8px; padding-right:8px; font-size:13px;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(1){order:1 !important; grid-column:span 2 !important;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(2){order:2 !important; grid-column:span 2 !important;}
-  body.role-admin.tab-dashboard .report-filter-card{gap:14px 10px;}
+  body.role-admin.tab-dashboard .report-filter-card{gap:14px 10px; container-type:inline-size;}
   body.role-admin.tab-dashboard .report-filter-card .quick-filter-field{order:3 !important; grid-column:span 6 !important;}
   body.role-admin.tab-dashboard .report-filter-card .quick-filter-field > label{text-align:center;}
   body.role-admin.tab-dashboard .report-filter-card .quick-filters{
@@ -375,6 +375,24 @@
     display:flex;
     align-items:center;
     justify-content:center;
+  }
+  /* Keep dashboard quick filters stable at intermediate widths without splitting their row. */
+  @container (max-width: 1300px){
+    body.role-admin.tab-dashboard .report-filter-card .quick-filters{
+      display:flex;
+      flex-wrap:nowrap;
+      gap:3px;
+    }
+    body.role-admin.tab-dashboard .report-filter-card .quick-filter-btn{
+      min-height:40px;
+      padding:6px 2px;
+      font-size:9.5px;
+    }
+  }
+  @container (max-width: 1050px){
+    body.role-admin.tab-dashboard .report-filter-card .quick-filter-field{
+      grid-column:1 / -1 !important;
+    }
   }
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(4){order:4 !important; grid-column:span 2 !important;}
   body.role-admin.tab-dashboard .report-filter-card .field:nth-child(5){order:5 !important; grid-column:span 2 !important;}
