@@ -79,6 +79,15 @@
   .login-error{background:rgba(229,72,77,.08); border:1px solid rgba(229,72,77,.25); color:var(--danger-dark); font-size:12.5px; padding:10px 14px; border-radius:var(--radius-sm); margin-bottom:14px; line-height:1.7;}
   .login-field{display:flex; flex-direction:column; gap:6px; margin-bottom:14px;}
   .login-field label{font-size:12.5px; font-weight:600; color:var(--text-mute);}
+  .password-input-wrap{position:relative; display:flex; width:100%;}
+  .password-input-wrap input{padding-left:44px;}
+  .password-peek-btn{
+    position:absolute; left:7px; top:50%; transform:translateY(-50%); width:32px; height:32px;
+    display:inline-flex; align-items:center; justify-content:center; padding:0; border:0; border-radius:7px;
+    background:transparent; color:var(--text-mute); cursor:pointer; touch-action:manipulation;
+  }
+  .password-peek-btn:hover, .password-peek-btn:focus-visible{background:rgba(47,111,237,.1); color:var(--accent-dark); outline:none;}
+  .password-peek-btn svg{width:17px; height:17px; pointer-events:none;}
   .login-submit{width:100%; justify-content:center; margin-top:4px;}
   .login-switch{text-align:center; font-size:11.5px; color:var(--text-mute); margin:16px 0 0; line-height:1.7;}
   .remember-me-row{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-mute); margin:4px 0 10px; cursor:pointer;}
@@ -1154,7 +1163,15 @@
 
     <form id="loginNormalForm" class="hidden" autocomplete="on">
       <div class="login-field"><label for="liUsername">نام کاربری</label><input type="text" id="liUsername" autocomplete="username"></div>
-      <div class="login-field"><label for="liPassword">رمز عبور</label><input type="password" id="liPassword" autocomplete="current-password"></div>
+      <div class="login-field">
+        <label for="liPassword">رمز عبور</label>
+        <div class="password-input-wrap">
+          <input type="password" id="liPassword" autocomplete="current-password">
+          <button class="password-peek-btn" id="loginPasswordPeekBtn" type="button" aria-label="نمایش رمز عبور" title="برای نمایش رمز نگه دارید">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+      </div>
       <label class="remember-me-row">
         <input type="checkbox" id="rememberMe"> مرا به خاطر بسپار
       </label>
@@ -2742,6 +2759,37 @@
   }
 
   /* ============ Login form submit handlers ============ */
+  (function setupLoginPasswordPeek(){
+    const passwordInput = document.getElementById('liPassword');
+    const peekButton = document.getElementById('loginPasswordPeekBtn');
+    if(!passwordInput || !peekButton) return;
+
+    function revealPassword(){
+      passwordInput.type = 'text';
+      peekButton.setAttribute('aria-label', 'پنهان کردن رمز عبور');
+    }
+    function concealPassword(){
+      passwordInput.type = 'password';
+      peekButton.setAttribute('aria-label', 'نمایش رمز عبور');
+    }
+
+    peekButton.addEventListener('pointerdown', function(event){
+      event.preventDefault();
+      revealPassword();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(eventName){
+      peekButton.addEventListener(eventName, concealPassword);
+    });
+    peekButton.addEventListener('keydown', function(event){
+      if(event.key === ' ' || event.key === 'Enter') revealPassword();
+    });
+    peekButton.addEventListener('keyup', function(event){
+      if(event.key === ' ' || event.key === 'Enter') concealPassword();
+    });
+    peekButton.addEventListener('blur', concealPassword);
+    peekButton.addEventListener('contextmenu', function(event){ event.preventDefault(); });
+  })();
+
   document.getElementById('loginBootstrapForm').addEventListener('submit', async function(e){
     e.preventDefault();
     const displayName = document.getElementById('bsDisplayName').value.trim();
