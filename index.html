@@ -718,8 +718,10 @@
   .profile-chain-title{font-size:12.5px; font-weight:800; color:var(--text); margin:10px 0 8px;}
   .profile-chain-steps{display:flex; flex-direction:column; gap:8px; margin-bottom:10px;}
   .profile-step{border:1px solid rgba(59,130,246,.42); border-radius:var(--radius-sm); background:rgba(255,255,255,.84); padding:9px 10px;}
-  .profile-step-head{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px 12px; margin-bottom:6px; font-size:12px; color:var(--text-mute);}
-  .profile-step-head strong{font-size:12.5px; color:var(--text);}
+  .profile-step-head{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:6px 12px; margin-bottom:6px; font-size:12px; color:var(--text-mute);}
+  .profile-step-head strong{grid-column:1; min-width:0; font-size:12.5px; color:var(--text); text-align:right;}
+  .profile-step-head span:first-of-type{grid-column:2; white-space:nowrap; text-align:center;}
+  .profile-step-head span:last-of-type{grid-column:3; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left;}
   .profile-step-desc{font-size:12.5px; line-height:1.8; color:var(--text); margin:0; white-space:pre-line; overflow-wrap:anywhere;}
   .profile-step-desc.empty{color:var(--text-mute);}
   .profile-actions{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-start;}
@@ -1079,6 +1081,8 @@
     .stats-row{grid-template-columns:1fr 1fr;}
     .profile-summary{grid-template-columns:1fr 1fr;}
     .profile-item-head{align-items:flex-start; flex-direction:column;}
+    .profile-step-head{grid-template-columns:1fr;}
+    .profile-step-head strong, .profile-step-head span:first-of-type, .profile-step-head span:last-of-type{grid-column:auto; text-align:right; white-space:normal; overflow:visible;}
     .form-button-controls .btn{flex:1 1 100%; justify-content:center;}
   }
   @media (max-width:520px){
@@ -3804,6 +3808,18 @@
     }).sort(function(a,b){ return (b.lastAt||0) - (a.lastAt||0); });
   }
 
+  function getOpenFollowupRows(criteria){
+    const latestByRoot = {};
+    filterCallsByCriteria(criteria).forEach(function(record){
+      const rootId = getFollowupRootId(record);
+      if(!rootId) return;
+      const previous = latestByRoot[rootId];
+      if(!previous || (record.createdAt || 0) > (previous.createdAt || 0)) latestByRoot[rootId] = record;
+    });
+    return Object.keys(latestByRoot).map(function(rootId){ return latestByRoot[rootId]; })
+      .sort(function(a, b){ return (b.createdAt || 0) - (a.createdAt || 0); });
+  }
+
   function getResolverName(c){
     if(c.status !== 'حل‌شده') return '—';
     return c.resolvedByName || c.agentName || '—';
@@ -4325,6 +4341,14 @@
     customerNameRequiredHint.textContent = isRequired ? 'الزامی' : 'اختیاری';
   }
 
+  function syncFollowupCategoryLock(){
+    const isLocked = !editingCallId && followupMode === 'continue' && !!selectedFollowupRootId;
+    [fCategory, fSub, fSubSub].forEach(function(field){
+      field.disabled = isLocked;
+      field.title = isLocked ? 'دسته‌بندی ادامه پیگیری از زنجیره قبلی ثابت است.' : '';
+    });
+  }
+
   function setFollowupMode(mode){
     followupMode = mode === 'new' ? 'new' : 'continue';
     document.querySelectorAll('.open-followup-mode').forEach(function(btn){
@@ -4344,6 +4368,7 @@
       if(!editingCallId) renderFormLog(null);
     }
     syncFollowupCloseCheckbox();
+    syncFollowupCategoryLock();
   }
 
   function syncFollowupCloseCheckbox(){
@@ -4409,6 +4434,7 @@
     updateFormRequestIdLabel(record);
     renderFormLog(record, 'تاریخچه پیگیری انتخاب‌شده');
     syncFollowupCloseCheckbox();
+    syncFollowupCategoryLock();
   }
 
   function selectedFollowupRecord(){
@@ -4487,6 +4513,7 @@
     if(!phone){ toast('شماره تماس مشتری را وارد کنید', 'error'); return; }
     if(!/^\d{1,11}$/.test(phone)){ toast('شماره تماس باید فقط عدد و حداکثر ۱۱ رقم باشد', 'error'); return; }
     if(status === 'در حال پیگیری' && !customerName){ toast('برای تماس‌های در حال پیگیری، نام مشتری را وارد کنید', 'error'); return; }
+    if(status === 'در حال پیگیری' && !desc){ toast('برای تماس‌های در حال پیگیری، توضیحات یا اقدام انجام‌شده را ثبت کنید', 'error'); fDesc.focus(); return; }
     if(!categoryId){ toast('دسته‌بندی را انتخاب کنید', 'error'); return; }
     const cat = categories.find(function(c){ return c.id === categoryId; });
     if(cat && cat.subs && cat.subs.length > 0 && !subId){ toast('زیردسته را انتخاب کنید', 'error'); return; }
@@ -4522,10 +4549,9 @@
         return;
       }
     }
-    if(primaryOpenFollowup && !skipCategoryMismatchConfirm && hasDifferentCategoryFromFollowup(primaryOpenFollowup, categoryId, subId, subsubId)){
-      confirmModal('دسته‌بندی این تماس با پیگیری باز انتخاب‌شده متفاوت است. اگر این تماس ادامه همان پیگیری است، بهتر است دسته‌بندی قبلی حفظ شود. با همین دسته‌بندی جدید ثبت شود؟', function(){
-        handleSubmitCall(true, skipNewRequestConfirm);
-      }, 'ادامه و ثبت');
+    if(primaryOpenFollowup && hasDifferentCategoryFromFollowup(primaryOpenFollowup, categoryId, subId, subsubId)){
+      applyCategoryFromRecord(primaryOpenFollowup);
+      toast('دسته‌بندی ادامه پیگیری از زنجیره قبلی ثابت است و قابل تغییر نیست', 'error');
       return;
     }
     if(!editingCallId && openFollowups.length && followupMode === 'new' && !skipNewRequestConfirm){
@@ -4770,6 +4796,14 @@
 
   profileSearchBtn.addEventListener('click', function(){
     runWithSearchLoading(commitProfileFiltersAndRender, 'در حال نمایش پرونده');
+  });
+  profileOpenOnly.addEventListener('change', function(){
+    if(profileOpenOnly.checked) profileStatus.value = 'در حال پیگیری';
+    else if(profileStatus.value === 'در حال پیگیری') profileStatus.value = '';
+    runWithSearchLoading(commitProfileFiltersAndRender, 'در حال اعمال فیلتر پیگیری‌های باز');
+  });
+  profileStatus.addEventListener('change', function(){
+    if(profileStatus.value !== 'در حال پیگیری') profileOpenOnly.checked = false;
   });
   profileClearBtn.addEventListener('click', function(){
     setJalaliPickerToISO('profileFrom', '');
@@ -5264,6 +5298,7 @@
     if(type === 'last30') return from === addDaysISO(today, -29) && to === today;
     if(type === 'my-open'){
       return currentUser &&
+        state.chainFilter === 'my-open' &&
         state.status === 'در حال پیگیری' &&
         !state.followupAge &&
         !state.agentAll &&
@@ -5290,7 +5325,7 @@
     } else if(type === 'old-open'){
       if(filterStatus.value === 'در حال پیگیری') filterStatus.value = '';
       if(filterFollowupAge.value === '24') filterFollowupAge.value = '';
-    } else if(type === 'closed' || type === 'my-closed'){
+    } else if(type === 'my-open' || type === 'closed' || type === 'my-closed'){
       activeReportChainFilter = '';
     }
     commitReportFiltersAndRender();
@@ -5322,6 +5357,7 @@
     } else if(type === 'my-open'){
       filterStatus.value = 'در حال پیگیری';
       setAgentFilterNames([currentUser ? currentUser.displayName : '']);
+      activeReportChainFilter = 'my-open';
     } else if(type === 'old-open'){
       filterStatus.value = 'در حال پیگیری';
       filterFollowupAge.value = '24';
@@ -5432,9 +5468,11 @@
       agentNames:agentFilterActive ? new Set(state.agents || []) : null,
       resolverNames:resolverFilterActive ? new Set(state.resolvers || []) : null
     };
-    const filtered = state.chainFilter
-      ? getClosedFollowupRows(criteria, state.chainFilter === 'my-closed')
-      : filterCallsByCriteria(criteria);
+    const filtered = state.chainFilter === 'my-open'
+      ? getOpenFollowupRows(criteria)
+      : (state.chainFilter
+        ? getClosedFollowupRows(criteria, state.chainFilter === 'my-closed')
+        : filterCallsByCriteria(criteria));
 
     lastFiltered = filtered;
     tablePage = 1;
@@ -6125,9 +6163,12 @@
     updateTablePagination(filtered.length);
     if(filtered.length === 0){
       callsTableBody.innerHTML = '';
-      emptyState.textContent = getActiveReportFilterState().chainFilter
-        ? 'پیگیری بسته‌شده‌ای با این فیلترها پیدا نشد.'
-        : 'هنوز تماسی با این فیلترها ثبت نشده است.';
+      const chainFilter = getActiveReportFilterState().chainFilter;
+      emptyState.textContent = chainFilter === 'my-open'
+        ? 'پیگیری بازی با این فیلترها پیدا نشد.'
+        : (chainFilter
+          ? 'پیگیری بسته‌شده‌ای با این فیلترها پیدا نشد.'
+          : 'هنوز تماسی با این فیلترها ثبت نشده است.');
       emptyState.classList.remove('hidden');
       return;
     }
