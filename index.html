@@ -1177,7 +1177,7 @@
         </div>
       </div>
       <label class="remember-me-row">
-        <input type="checkbox" id="rememberMe"> مرا به خاطر بسپار
+        <input type="checkbox" id="rememberMe" checked> مرا به خاطر بسپار
       </label>
       <button type="submit" id="loginSubmitBtn" class="btn btn-primary login-submit">ورود</button>
     </form>
@@ -1925,7 +1925,7 @@
      ۴. آدرس Web App را در GAS_URL زیر قرار دهید
      ═══════════════════════════════════════════════════════════════════ */
 
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzRx54NDFemkGT11H2dNJx1yk4nOIYMIAQFppPss5tKSj-QbH1ma3pueCxEzM5OM1W5/exec'; // <── آدرس خود را اینجا بگذارید
+  const GAS_URL = '/api/storage'; // Node.js backend
 
   const _gasMode = GAS_URL !== 'YOUR_GAS_WEB_APP_URL_HERE';
   const _LS      = 'crm:';      // پیشوند localStorage

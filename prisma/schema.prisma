@@ -1,0 +1,135 @@
+// Micro CRM - Prisma Schema
+// PostgreSQL 17 with Prisma 7 ORM
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Users table - call center agents and admins
+model User {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username     String   @unique @db.VarChar(100)
+  displayName  String   @map("display_name") @db.VarChar(200)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  role         String   @db.VarChar(20) // 'admin' | 'agent'
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  agentCalls    Call[]    @relation("AgentCalls")
+  resolvedCalls Call[]    @relation("ResolvedCalls")
+  callLogs      CallLog[]
+
+  @@map("users")
+}
+
+/// Categories table - 3-level self-referencing hierarchy
+model Category {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.VarChar(200)
+  parentId  String?  @map("parent_id") @db.Uuid
+  level     Int      // 1, 2, or 3
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Self-referencing relation
+  parent   Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryHierarchy")
+
+  // Calls referencing this category at different levels
+  callsAsCategory       Call[] @relation("CallCategory")
+  callsAsSubCategory    Call[] @relation("CallSubCategory")
+  callsAsSubSubCategory Call[] @relation("CallSubSubCategory")
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+/// Calls table - main call records
+model Call {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requestId        String    @unique @map("request_id") @db.VarChar(20)
+  date             DateTime  @db.Date
+  phone            String    @db.VarChar(11)
+  customerName     String?   @map("customer_name") @db.VarChar(200)
+  status           String    @db.VarChar(30) // 'in_progress' | 'resolved'
+  description      String?   @db.Text
+  categoryId       String?   @map("category_id") @db.Uuid
+  categoryName     String?   @map("category_name") @db.VarChar(200)
+  subCategoryId    String?   @map("sub_category_id") @db.Uuid
+  subCategoryName  String?   @map("sub_category_name") @db.VarChar(200)
+  subSubCategoryId String?   @map("sub_sub_category_id") @db.Uuid
+  subSubCategoryName String? @map("sub_sub_category_name") @db.VarChar(200)
+  agentId          String    @map("agent_id") @db.Uuid
+  agentName        String    @map("agent_name") @db.VarChar(200)
+  followupRootId   String?   @map("followup_root_id") @db.Uuid
+  linkedToId       String?   @map("linked_to_id") @db.Uuid
+  closedByCallId   String?   @map("closed_by_call_id") @db.Uuid
+  resolvedById     String?   @map("resolved_by_id") @db.Uuid
+  resolvedByName   String?   @map("resolved_by_name") @db.VarChar(200)
+  resolvedAt       DateTime? @map("resolved_at") @db.Timestamptz()
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  // Relations
+  agent            User      @relation("AgentCalls", fields: [agentId], references: [id])
+  resolvedBy       User?     @relation("ResolvedCalls", fields: [resolvedById], references: [id])
+  category         Category? @relation("CallCategory", fields: [categoryId], references: [id])
+  subCategory      Category? @relation("CallSubCategory", fields: [subCategoryId], references: [id])
+  subSubCategory   Category? @relation("CallSubSubCategory", fields: [subSubCategoryId], references: [id])
+
+  // Self-referencing relations for follow-up chains
+  followupRoot     Call?     @relation("FollowupRoot", fields: [followupRootId], references: [id])
+  followupChildren Call[]    @relation("FollowupRoot")
+  linkedTo         Call?     @relation("LinkedTo", fields: [linkedToId], references: [id])
+  linkedFrom       Call[]    @relation("LinkedTo")
+  closedByCall     Call?     @relation("ClosedBy", fields: [closedByCallId], references: [id])
+  closedCalls      Call[]    @relation("ClosedBy")
+
+  // Call logs
+  callLogs         CallLog[]
+
+  @@index([phone])
+  @@index([date])
+  @@index([agentId])
+  @@index([status])
+  @@index([followupRootId])
+  @@index([requestId])
+  @@index([createdAt])
+  @@map("calls")
+}
+
+/// CallLogs table - audit trail for call record changes
+model CallLog {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  callId      String   @map("call_id") @db.Uuid
+  action      String   @db.VarChar(50)
+  details     Json?    @db.JsonB
+  userId      String   @map("user_id") @db.Uuid
+  userName    String   @map("user_name") @db.VarChar(200)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  // Relations
+  call        Call     @relation(fields: [callId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([callId])
+  @@map("call_logs")
+}
+
+/// KvStore table - generic key-value fallback for unrecognized keys
+model KvStore {
+  key       String   @id @db.VarChar(500)
+  value     String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("kv_store")
+}
